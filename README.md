@@ -1,74 +1,79 @@
-# WhatsApp Automation API
+# WhatsApp Bulk Messages Without Saving Contacts
 
-This is a WhatsApp automation API that allows you to send bulk messages through WhatsApp Web. The API is designed to be deployed on Vercel.
+It is a python script that sends WhatsApp message automatically from WhatsApp web application without saved contact numbers. It can be configured to send advertising messages to recipients. It read data from an excel sheet and send a configured message to people.
+
+## Contact me over Telegram: https://t.me/inforkgodara
+
+## Important Note
+* WhatsApp Business released API on May 2022, no longer needed this repository. You can accomplish your same requirements through WhatsApp Business APIs.
 
 ## Prerequisites
 
-* Python 3.8 or higher
-* Chrome browser
-* A Vercel account
+In order to run the python script, your system must have the following programs/packages installed and the contact number not need to be saved in your phone (You can use bulk contact number saving procedure of email). It has limitation of sending attachment but you can refer to my another repo which has functionality to send document file like pdf, image, etc.
+* Python 3.8: Download it from https://www.python.org/downloads
+* Chrome v79: Download it from https://chrome.google.com
+* Pandas : Run in command prompt **pip install pandas**
+* Xlrd : Run in command prompt **pip install xlrd**
+* Selenium: Run in command prompt **pip install selenium** 
+* Web Driver: Run in command prompt **pip install webdriver_manager**
+* Openpyxl: Run in command prompt **pip install openpyxl**
 
-## Dependencies
+## Approach
+* First need to clone this respiratory
+* Run python script script.py using py script.py in the terminal
+* The script opens WhatsApp web using chrome.
+* User needs to scan QR code from his/her phone.
+* Enter in command prompt to execute further.
+* The script hit url with contact number and message from excel sheet.
+* Once all the message will be sent chrome driver will automatically closed.
 
-The following Python packages are required:
-* FastAPI
-* Selenium
-* Pandas
-* Webdriver Manager
-* Openpyxl
-* Uvicorn
-* Python-multipart
+Note: If you wish to send an image instead of text you can write attachment selection python code.
 
-## Local Development
+## Legal
+* This code is in no way affiliated with, authorized, maintained, sponsored or endorsed by WhatsApp or any of its affiliates or subsidiaries. This is an independent and unofficial software. Use at your own risk. Commercial use of this code/repo is strictly prohibited.
 
-1. Install the dependencies:
-```bash
-pip install -r requirements.txt
+## Code
 ```
+# Program to send bulk messages through WhatsApp web from an excel sheet without saving contact numbers
+# Author @inforkgodara
 
-2. Run the application:
-```bash
-python app.py
+from selenium import webdriver
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.by import By
+from webdriver_manager.chrome import ChromeDriverManager
+from time import sleep
+import pandas
+
+excel_data = pandas.read_excel('Recipients data.xlsx', sheet_name='Recipients')
+
+count = 0
+
+driver = webdriver.Chrome(ChromeDriverManager().install())
+driver.get('https://web.whatsapp.com')
+input("Press ENTER after login into Whatsapp Web and your chats are visiable.")
+for column in excel_data['Contact'].tolist():
+    try:
+        url = 'https://web.whatsapp.com/send?phone=' + str(excel_data['Contact'][count]) 
+        + '&text=' + excel_data['Message'][0]
+        sent = False
+        # It tries 3 times to send a message in case if there any error occurred
+        driver.get(url)
+        try:
+            click_btn = WebDriverWait(driver, 35).until(
+                EC.element_to_be_clickable((By.CLASS_NAME, '_3XKXx')))
+        except Exception as e:
+            print("Sorry message could not sent to " + str(excel_data['Contact'][count]))
+        else:
+            sleep(2)
+            click_btn.click()
+            sent = True
+            sleep(5)
+            print('Message sent to: ' + str(excel_data['Contact'][count]))
+        count = count + 1
+    except Exception as e:
+        print('Failed to send message to ' + str(excel_data['Contact'][count]) + str(e))
+driver.quit()
+print("The script executed successfully.")
 ```
-
-The server will start at `http://localhost:8000`
-
-## Deployment to Vercel
-
-1. Fork or clone this repository
-2. Install the Vercel CLI: `npm i -g vercel`
-3. Login to Vercel: `vercel login`
-4. Deploy the project: `vercel`
-
-## API Usage
-
-### Endpoints
-
-1. `GET /`: Health check endpoint
-2. `POST /send-messages`: Send bulk WhatsApp messages
-
-### Sending Messages
-
-To send messages, you need to:
-
-1. Prepare an Excel file with two columns:
-   - `Contact`: Phone numbers (with country code, no '+' or spaces)
-   - `Message`: The message to send
-
-2. Send a POST request to `/send-messages` with the Excel file as form data.
-
-Example using curl:
-```bash
-curl -X POST -F "file=@path/to/your/excel/file.xlsx" https://your-vercel-deployment.vercel.app/send-messages
-```
-
-## Important Notes
-
-* The API uses headless Chrome for automation
-* WhatsApp Web QR code scanning is required for authentication
-* The API is rate-limited by WhatsApp's policies
-* This is an unofficial implementation and should be used responsibly
-
-## Legal Disclaimer
-
-This code is in no way affiliated with, authorized, maintained, sponsored or endorsed by WhatsApp or any of its affiliates or subsidiaries. This is an independent and unofficial software. Use at your own risk. Commercial use of this code/repo is strictly prohibited.
+Note: The script may not work in case if the HTML of web WhatsApp is changed. If you face any problem please do let me know. Surely I will help you out. You can expect response on weekend only others days extremely busy with my routine activities.

@@ -1,106 +1,65 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-import pandas as pd
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.by import By
-from webdriver_manager.chrome import ChromeDriverManager
-import time
+from flask import Flask, request, jsonify, send_from_directory
+from flask_cors import CORS
 import os
-import tempfile
+from werkzeug.utils import secure_filename
+import uuid
+from script import start_whatsapp_session, send_whatsapp_messages
 
-app = FastAPI()
+app = Flask(__name__)
+CORS(app)
 
-# Add CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+UPLOAD_FOLDER = 'uploads'
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
 
-@app.get("/")
-async def root():
-    return {"message": "WhatsApp Automation API is running"}
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 
-@app.post("/send-messages")
-async def send_messages(file: UploadFile = File(...)):
+ALLOWED_EXTENSIONS = {'xlsx', 'xls'}
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+@app.route('/')
+def index():
+    return send_from_directory('templates', 'index.html')
+
+@app.route('/upload', methods=['POST'])
+def upload_file():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file part'}), 400
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'No selected file'}), 400
+    if file and allowed_file(file.filename):
+        filename = secure_filename(file.filename)
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(filepath)
+        session_id = str(uuid.uuid4())
+        try:
+            start_whatsapp_session(session_id, filepath)
+            os.remove(filepath)
+            return jsonify({'message': 'WhatsApp Web opened. Please scan QR and click Start Sending.', 'session_id': session_id})
+        except Exception as e:
+            if os.path.exists(filepath):
+                os.remove(filepath)
+            return jsonify({'error': str(e)}), 500
+    return jsonify({'error': 'Invalid file type'}), 400
+
+@app.route('/start-sending', methods=['POST'])
+def start_sending():
+    data = request.get_json()
+    session_id = data.get('session_id')
+    if not session_id:
+        return jsonify({'error': 'No session_id provided'}), 400
     try:
-        # Save the uploaded file temporarily
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as temp_file:
-            content = await file.read()
-            temp_file.write(content)
-            temp_file_path = temp_file.name
-
-        # Read the Excel file
-        excel_data = pd.read_excel(temp_file_path)
-        
-        # Configure Chrome options for headless mode
-        chrome_options = Options()
-        chrome_options.add_argument('--headless')
-        chrome_options.add_argument('--no-sandbox')
-        chrome_options.add_argument('--disable-dev-shm-usage')
-        
-        # Initialize the driver
-        driver = webdriver.Chrome(ChromeDriverManager().install(), options=chrome_options)
-        driver.get('https://web.whatsapp.com')
-        
-        # Wait for QR code scan (in production, you might want to implement a different approach)
-        time.sleep(15)  # Give time for manual QR code scan
-        
-        results = []
-        count = 0
-        
-        for contact in excel_data['Contact'].tolist():
-            try:
-                url = f'https://web.whatsapp.com/send?phone={contact}&text={excel_data["Message"][0]}'
-                driver.get(url)
-                
-                try:
-                    click_btn = WebDriverWait(driver, 35).until(
-                        EC.element_to_be_clickable((By.CLASS_NAME, '_3XKXx')))
-                    time.sleep(2)
-                    click_btn.click()
-                    time.sleep(5)
-                    results.append({
-                        "contact": contact,
-                        "status": "success",
-                        "message": "Message sent successfully"
-                    })
-                except Exception as e:
-                    results.append({
-                        "contact": contact,
-                        "status": "error",
-                        "message": f"Failed to send message: {str(e)}"
-                    })
-                
-                count += 1
-                
-            except Exception as e:
-                results.append({
-                    "contact": contact,
-                    "status": "error",
-                    "message": f"Failed to process contact: {str(e)}"
-                })
-        
-        driver.quit()
-        
-        # Clean up the temporary file
-        os.unlink(temp_file_path)
-        
-        return {
-            "status": "completed",
-            "total_processed": count,
-            "results": results
-        }
-        
+        print(f"[INFO] Starting to send messages for session: {session_id}")
+        results = send_whatsapp_messages(session_id)
+        print(f"[INFO] Finished sending messages for session: {session_id}")
+        return jsonify({'message': 'Messages sent', 'results': results})
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"[ERROR] {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
-# For local development
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000) 
+if __name__ == '__main__':
+    app.run(debug=True, port=5000) 
